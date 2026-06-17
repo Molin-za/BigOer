@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Big-O Calculator — 6+1 策略链 · 全自定义输入</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script>
+tailwind.config={darkMode:'class',theme:{extend:{colors:{cyber:{bg:'#050510',card:'#0c0c1d',glass:'rgba(15,23,42,0.55)',cyan:'#06b6d4',purple:'#8b5cf6',pink:'#ec4899',border:'#1e293b',muted:'#94a3b8'}},animation:{glow:'glowPulse 3s ease-in-out infinite'},keyframes:{glowPulse:{'0%,100%':{boxShadow:'0 0 20px rgba(6,182,212,0.15),0 0 60px rgba(6,182,212,0.05)'},'50%':{boxShadow:'0 0 35px rgba(6,182,212,0.3),0 0 80px rgba(139,92,246,0.12)'}}}}}}
+</script>
+<style>
+*{box-sizing:border-box}
+body{background:#050510;color:#e2e8f0;font-family:'Inter','Segoe UI',system-ui,sans-serif}
+.glass{background:rgba(15,23,42,0.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(6,182,212,0.08)}
+.glass-strong{background:rgba(15,23,42,0.7);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(6,182,212,0.14)}
+.glow-border{box-shadow:0 0 30px rgba(6,182,212,0.08),0 0 80px rgba(139,92,246,0.04);transition:box-shadow .4s}
+.glow-border:hover{box-shadow:0 0 40px rgba(6,182,212,0.15),0 0 100px rgba(139,92,246,0.08)}
+.gradient-text{background:linear-gradient(135deg,#06b6d4,#8b5cf6,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+input,select{background:rgba(15,23,42,0.8)!important;border-color:rgba(6,182,212,0.15)!important;transition:all .25s}
+input:focus,select:focus{border-color:rgba(6,182,212,0.5)!important;box-shadow:0 0 15px rgba(6,182,212,0.12)!important;outline:none}
+.katex{font-size:1.08em!important}.katex-display{margin:.4em 0!important}.katex-display>.katex{font-size:1.15em!important}
+.timeline-line{position:absolute;left:19px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,#06b6d4,#8b5cf6,transparent)}
+.quantum-loader{position:relative;width:48px;height:48px}
+.quantum-loader::before,.quantum-loader::after{content:'';position:absolute;inset:0;border-radius:50%;border:3px solid transparent}
+.quantum-loader::before{border-top-color:#06b6d4;border-right-color:#06b6d4;animation:spin 1.2s linear infinite}
+.quantum-loader::after{border-bottom-color:#8b5cf6;border-left-color:#8b5cf6;animation:spin 1.8s linear infinite reverse;inset:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes termEnter{from{opacity:0;transform:translateX(-20px);max-height:0}to{opacity:1;transform:translateX(0);max-height:60px}}
+.term-enter{animation:termEnter .35s ease-out}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(6,182,212,0.2);border-radius:3px}
+</style>
+</head>
+<body class="min-h-screen bg-cyber-bg">
+<div class="fixed inset-0 pointer-events-none z-0" style="background-image:radial-gradient(rgba(6,182,212,0.03) 1px,transparent 1px);background-size:40px 40px"></div>
+<div class="relative z-10">
+
+<header class="pt-10 pb-6 px-4 text-center">
+  <div class="inline-flex items-center gap-3 mb-2">
+    <i class="fa-solid fa-microchip text-cyber-cyan text-2xl animate-glow"></i>
+    <h1 class="text-4xl md:text-5xl font-black gradient-text tracking-tight">Big-O Calculator</h1>
+  </div>
+  <p class="text-cyber-muted text-sm max-w-xl mx-auto">6+1 策略链 · 全自定义输入 · 主定理 · AkraBazzi · 特征方程 · 换元法 · 连续近似 · 数值拟合</p>
+</header>
+
+<main class="max-w-4xl mx-auto px-4 pb-20 space-y-8">
+
+  <!-- Live Formula Screen -->
+  <div class="glass-strong rounded-2xl p-6 glow-border relative overflow-hidden">
+    <div class="absolute top-0 right-0 w-64 h-64 bg-cyber-cyan/3 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+    <div class="relative z-10">
+      <div class="flex items-center gap-2 mb-3">
+        <i class="fa-solid fa-display text-cyber-cyan text-sm"></i>
+        <span class="text-xs text-cyber-muted uppercase tracking-[0.2em] font-semibold">实时公式荧光屏</span>
+        <span class="ml-auto flex gap-1.5"><span class="w-2 h-2 rounded-full bg-red-400/60"></span><span class="w-2 h-2 rounded-full bg-yellow-400/60"></span><span class="w-2 h-2 rounded-full bg-green-400/60"></span></span>
+      </div>
+      <div id="formulaScreen" class="min-h-[3.5rem] flex items-center justify-center py-2 overflow-x-auto">
+        <span class="text-cyber-muted/40 italic">添加递推项以预览公式…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input Card -->
+  <div class="glass rounded-2xl p-6 md:p-8 glow-border">
+    <div class="mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-list-tree text-cyber-cyan text-sm"></i> 递推分支</h2>
+        <button id="btnAdd" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/25 hover:bg-cyber-cyan/20 active:scale-95 transition-all">
+          <i class="fa-solid fa-plus text-xs"></i> 增加递推分支
+        </button>
+      </div>
+      <div id="termsContainer" class="space-y-2.5"></div>
+    </div>
+
+    <div class="mb-6">
+      <label class="flex items-center gap-2 text-sm font-semibold text-white mb-2">
+        <i class="fa-solid fa-function text-cyber-purple text-sm"></i> 驱动函数 <code class="text-cyber-muted bg-white/5 px-1.5 py-0.5 rounded text-xs">g(n)</code>
+      </label>
+      <input id="inputGN" type="text" value="n^2" class="w-full rounded-xl px-4 py-3 text-white font-mono text-sm placeholder:text-cyber-muted/40" placeholder="例如: n^2, n*log(n), 1, 2^n, 1/n">
+    </div>
+
+    <button id="btnSolve" class="w-full py-3.5 rounded-xl font-bold text-base text-gray-900 bg-gradient-to-r from-cyber-cyan via-cyber-purple to-cyber-pink hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 shadow-lg shadow-cyber-purple/20">
+      <i id="iconSolve" class="fa-solid fa-play text-sm"></i>
+      <span id="btnText">开始计算与推导</span>
+      <div id="loaderBox" class="hidden"><div class="quantum-loader"></div></div>
+    </button>
+    <div id="errorBox" class="mt-4 hidden p-4 rounded-xl bg-red-500/8 border border-red-500/20 text-red-400 text-sm"></div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsSection" class="hidden space-y-6">
+    <div class="glass-strong rounded-2xl p-8 text-center glow-border relative overflow-hidden">
+      <div class="absolute inset-0 bg-gradient-to-br from-cyber-cyan/5 via-transparent to-cyber-purple/5"></div>
+      <div class="relative z-10">
+        <p class="text-xs text-cyber-muted uppercase tracking-[0.25em] mb-2">时间复杂度</p>
+        <div id="bigODisplay" class="text-3xl md:text-4xl font-black text-white py-2"></div>
+        <span id="methodBadge" class="inline-block mt-3 px-3 py-1 text-xs font-bold rounded-full bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/25"></span>
+      </div>
+    </div>
+    <div id="noteBox" class="hidden p-4 rounded-xl text-sm flex items-start gap-2"></div>
+    <div>
+      <h3 class="font-semibold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-timeline text-cyber-cyan"></i> 推导时间轴</h3>
+      <div class="relative pl-10"><div class="timeline-line"></div><div id="timelineContainer" class="space-y-4"></div></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<!-- Term Row Template — NO dropdowns, all text inputs -->
+<template id="termTemplate">
+  <div class="term-row flex flex-wrap items-center gap-2 p-3 rounded-xl bg-white/[0.03] border border-cyber-border/30 group hover:border-cyber-cyan/15 transition-all duration-200">
+    <span class="text-cyber-muted text-xs font-mono shrink-0">k<sub>i</sub></span>
+    <input type="text" class="coeff w-20 rounded-lg px-2.5 py-2 text-white text-sm text-center font-mono" value="1" placeholder="1">
+    <span class="text-cyber-muted text-xs shrink-0">· T(</span>
+    <input type="text" class="func-input flex-1 min-w-[120px] rounded-lg px-3 py-2 text-white text-sm font-mono" value="n/2" placeholder="例如: n/2, n-1, sqrt(n)">
+    <span class="text-cyber-muted text-xs shrink-0">)</span>
+    <button class="btn-del ml-auto p-1.5 rounded-lg text-cyber-muted/40 hover:text-red-400 hover:bg-red-400/10 transition-all opacity-0 group-hover:opacity-100"><i class="fa-solid fa-trash-can text-sm"></i></button>
+  </div>
+</template>
+
+<!-- Step Template -->
+<template id="stepTemplate">
+  <div class="step-stagger flex gap-4">
+    <div class="relative shrink-0"><div class="w-10 h-10 rounded-full bg-cyber-card border-2 border-cyber-cyan/30 flex items-center justify-center z-10 relative"><span class="step-num text-xs font-bold text-cyber-cyan"></span></div></div>
+    <div class="flex-1 glass rounded-xl p-4 glow-border min-w-0">
+      <h4 class="step-title font-semibold text-white text-sm mb-1.5"></h4>
+      <p class="step-desc text-cyber-muted text-xs leading-relaxed mb-2"></p>
+      <div class="step-latex bg-black/25 rounded-lg p-3 overflow-x-auto"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+(function(){
+const API='http://127.0.0.1:8000';
+const $=id=>document.getElementById(id);
+let terms=[{coefficient:'2',function:'n/2'}];
+
+const formulaScreen=$('formulaScreen'),termsContainer=$('termsContainer'),inputGN=$('inputGN');
+const btnSolve=$('btnSolve'),btnText=$('btnText'),iconSolve=$('iconSolve'),loaderBox=$('loaderBox');
+const resultsSection=$('resultsSection'),bigODisplay=$('bigODisplay'),methodBadge=$('methodBadge');
+const noteBox=$('noteBox'),timelineContainer=$('timelineContainer'),errorBox=$('errorBox');
+const btnAdd=$('btnAdd');
+const termTpl=document.querySelector('#termTemplate'),stepTpl=document.querySelector('#stepTemplate');
+
+function usrLatex(s){
+  return s.replace(/\^(\w+)/g,'^{$1}').replace(/\^\(([^)]+)\)/g,'^{($1)}')
+          .replace(/\*/g,' \\cdot ').replace(/\blog\b/g,'\\log').replace(/\bsqrt\b/g,'\\sqrt');
+}
+
+function buildFormula(){
+  const parts=[];
+  for(const t of terms){
+    const k=t.coefficient.trim(); const f=t.function.trim();
+    if(k==='0'||!f) continue;
+    const ks=(k==='1')?'':(k);
+    parts.push((ks?ks+' ':'')+'T('+usrLatex(f)+')');
+  }
+  const gs=usrLatex(inputGN.value.trim()||'0');
+  return 'T(n) = '+(parts.length?parts.join(' + '):'0')+' + '+gs;
+}
+
+function updatePreview(){
+  try{katex.render(buildFormula(),formulaScreen,{throwOnError:false,displayMode:true,trust:true})}
+  catch(e){formulaScreen.innerHTML='<span class="text-red-400 text-sm">'+buildFormula()+'</span>'}
+}
+
+function collectTerms(){
+  terms=[];
+  termsContainer.querySelectorAll('.term-row').forEach(row=>{
+    const c=row.querySelector('.coeff').value.trim()||'1';
+    const f=row.querySelector('.func-input').value.trim()||'n/2';
+    terms.push({coefficient:c,function:f});
+  });
+  updatePreview();
+}
+
+function renderTerm(t){
+  const clone=termTpl.content.cloneNode(true),row=clone.querySelector('.term-row');
+  const coeffEl=row.querySelector('.coeff'),funcEl=row.querySelector('.func-input'),btnDel=row.querySelector('.btn-del');
+  coeffEl.value=t.coefficient; funcEl.value=t.function;
+  coeffEl.addEventListener('input',collectTerms);
+  funcEl.addEventListener('input',collectTerms);
+  btnDel.addEventListener('click',()=>{
+    if(termsContainer.querySelectorAll('.term-row').length<=1) return;
+    row.style.maxHeight=row.offsetHeight+'px'; row.classList.add('overflow-hidden');
+    requestAnimationFrame(()=>{
+      row.style.transition='all 0.3s ease-out';
+      row.style.maxHeight='0'; row.style.opacity='0'; row.style.margin='0'; row.style.padding='0';
+      row.addEventListener('transitionend',()=>{row.remove();collectTerms()},{once:true});
+    });
+  });
+  return row;
+}
+
+function renderAllTerms(){termsContainer.innerHTML='';terms.forEach(t=>termsContainer.appendChild(renderTerm(t)));updatePreview()}
+btnAdd.addEventListener('click',()=>{const row=renderTerm({coefficient:'1',function:'n/2'});termsContainer.appendChild(row);row.classList.add('term-enter');collectTerms()});
+inputGN.addEventListener('input',updatePreview);
+
+let _abortCtrl = null;
+
+btnSolve.addEventListener('click',async()=>{
+  collectTerms();
+  const gn=inputGN.value.trim(); if(!gn) return;
+  // Cancel any in-flight request
+  if (_abortCtrl) { _abortCtrl.abort(); _abortCtrl = null; }
+  _abortCtrl = new AbortController();
+  const signal = _abortCtrl.signal;
+
+  btnSolve.disabled=true; btnText.textContent='6 策略链推演中…'; iconSolve.classList.add('hidden'); loaderBox.classList.remove('hidden');
+  resultsSection.classList.add('hidden'); errorBox.classList.add('hidden');
+  // Show cancel button
+  const cancelBtn = document.createElement('button');
+  cancelBtn.id = 'btnCancel'; cancelBtn.className = 'mt-3 w-full py-2 rounded-xl text-sm text-cyber-muted border border-cyber-border/50 hover:border-red-400/30 hover:text-red-400 transition-all';
+  cancelBtn.textContent = '取消计算';
+  cancelBtn.onclick = () => { _abortCtrl.abort(); _abortCtrl = null; resetUI(); };
+  btnSolve.parentNode.appendChild(cancelBtn);
+
+  // 120s timeout
+  const timeoutId = setTimeout(() => { _abortCtrl.abort(); }, 120000);
+
+  try{
+    const resp=await fetch(API+'/api/solve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({terms,g_n:gn}),signal});
+    clearTimeout(timeoutId);
+    const data=await resp.json();
+    if(!resp.ok) throw new Error(data.detail||'请求失败');
+    if(!data.success) throw new Error('后端求解失败');
+    showResults(data);
+  }catch(err){
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      errorBox.classList.remove('hidden');
+      errorBox.innerHTML = '<i class=\"fa-solid fa-clock mr-2\"></i>计算已取消或超时（120s），请简化输入后重试';
+    } else {
+      errorBox.classList.remove('hidden');
+      errorBox.innerHTML = '<i class=\"fa-solid fa-circle-exclamation mr-2\"></i>'+err.message;
+    }
+  }finally{
+    resetUI();
+  }
+});
+
+function resetUI() {
+  _abortCtrl = null;
+  btnSolve.disabled=false; btnText.textContent='开始计算与推导'; iconSolve.classList.remove('hidden'); loaderBox.classList.add('hidden');
+  const cb = document.getElementById('btnCancel'); if (cb) cb.remove();
+}
+
+function showResults(data){
+  bigODisplay.innerHTML='';
+  try{katex.render(data.final_complexity,bigODisplay,{throwOnError:false,displayMode:true,trust:true})}
+  catch(e){bigODisplay.textContent=data.final_complexity}
+  methodBadge.textContent=data.method;
+
+  if(data.note){
+    noteBox.classList.remove('hidden');
+    noteBox.innerHTML='<span id="noteText"></span>';
+    const nt=noteBox.querySelector('#noteText');
+    try{katex.render(data.note,nt,{throwOnError:false,displayMode:true,trust:true})}
+    catch(e){nt.textContent=data.note}
+    noteBox.className=data.note.includes('\\text')?'p-4 rounded-xl bg-cyber-cyan/5 border border-cyber-cyan/15 text-cyber-muted text-sm flex items-start gap-2':'p-4 rounded-xl bg-yellow-500/5 border border-yellow-500/15 text-yellow-300/80 text-sm flex items-start gap-2';
+  }else noteBox.classList.add('hidden');
+
+  timelineContainer.innerHTML='';
+  const steps=data.demo_steps||[];
+  if(!steps.length) timelineContainer.innerHTML='<p class="text-cyber-muted text-sm italic">暂无推导步骤</p>';
+  steps.forEach((step,i)=>{
+    const clone=stepTpl.content.cloneNode(true),wrapper=clone.querySelector('.step-stagger');
+    wrapper.querySelector('.step-num').textContent=i+1;
+    wrapper.querySelector('.step-title').textContent=step.title;
+    wrapper.querySelector('.step-desc').textContent=step.description;
+    const latexEl=wrapper.querySelector('.step-latex');
+    if(step.latex){
+      try{katex.render(step.latex,latexEl,{throwOnError:false,displayMode:true,trust:true})}
+      catch(e){latexEl.textContent=step.latex}
+    }else latexEl.classList.add('hidden');
+
+    wrapper.style.opacity='0'; wrapper.style.transform='translateY(30px)';
+    wrapper.style.transition='opacity 0.5s ease-out, transform 0.5s ease-out';
+    timelineContainer.appendChild(wrapper);
+    wrapper.offsetHeight;
+    setTimeout(()=>{wrapper.style.opacity='1';wrapper.style.transform='translateY(0)'},i*80+10);
+  });
+
+  renderMathInElement(timelineContainer,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});
+  resultsSection.classList.remove('hidden');
+  resultsSection.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+renderAllTerms();
+})();
+</script>
+</body>
+</html>
