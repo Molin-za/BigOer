@@ -272,15 +272,34 @@ def _domain_substitution(terms, g_sym: sp.Expr) -> Optional[Tuple[str, List[Demo
 def _continuous_approx(terms, g_sym: sp.Expr) -> Optional[Tuple[str, List[DemoStep], Optional[str]]]:
     if len(terms)!=1: return None
     t=terms[0]; c=_is_sub(t.function)
-    if c is None: return None
-    if abs(_parse_coeff(t.coefficient)-1.0)>1e-9: return None
+    # Also handle variable-step: T(n - log n), T(n - sqrt n), etc.
+    if c is None:
+        expr = _parse_safe(t.function)
+        if expr is not None and expr.has(_n) and expr != _n:
+            # Try to extract asymptotic step: diff = n - f(n) ≈ ?
+            try:
+                diff = sp.limit(_n - expr, _n, sp.oo)
+                if diff.is_number and diff > 0: c = float(diff)
+                else:
+                    # Variable step: approximate dT/dn ≈ g(n) / step(n)
+                    from parse_clean import _n as pn
+                    c = 1.0  # will use the actual step in the DE
+            except: c = None
+        if c is None: return None
+    k = _parse_coeff(t.coefficient)
+    if abs(k - 1.0) > 1e-9: return None
     steps=[DemoStep(title="连续化微积分 — 启动",
-        description=f"$T(n)-T(n-{int(c)})\\approx g(n)$。",
-        latex=f"T(n)-T(n-{int(c)})\\approx {sp.latex(g_sym)}")]
+        description=f"$T(n)-T(f(n))\\approx g(n)$，连续化处理。",
+        latex=f"T(n)-T({sp.latex(_parse_safe(t.function))})\\approx {sp.latex(g_sym)}")]
     T_func=sp.Function('T')
-    de=sp.Eq(sp.Derivative(T_func(_n),_n), g_sym/c)
+    # If step is variable, use n - f(n) as step in derivative
+    if c is not None and _is_sub(t.function) is not None:
+        step_expr = sp.Integer(int(c))
+    else:
+        step_expr = _n - _parse_safe(t.function)
+    de=sp.Eq(sp.Derivative(T_func(_n),_n), g_sym / step_expr)
     steps.append(DemoStep(title="连续化微积分 — 微分方程",
-        description=f"$dT/dn\\approx g(n)/{int(c)}$。", latex=sp.latex(de)))
+        description=f"$dT/dn\\approx g(n) / (n - f(n))$。", latex=sp.latex(de)))
     try:
         sol=sp.dsolve(de,T_func(_n))
         if sol is not None:
@@ -298,40 +317,89 @@ def _continuous_approx(terms, g_sym: sp.Expr) -> Optional[Tuple[str, List[DemoSt
 # ═══════════════ STRATEGY 5: POINCARÉ-PERRON ═══════════════
 
 def _poincare_perron(terms, g_sym: sp.Expr) -> Optional[Tuple[str, List[DemoStep], Optional[str]]]:
-    has_var = False
+    """Detect variable coefficients or variable f_i(n) forms. Take limits to approximate."""
+    from parse_clean import _sanitize
+    steps = []
+    has_var_coeff = False; has_var_func = False
+
+    # Check coefficients for variable forms
     for t in terms:
-        expr=_parse_safe(t.function)
-        if expr is not None and expr.has(_n) and expr!=_n:
+        cs = _sanitize(t.coefficient.strip())
+        expr = _parse_safe(cs)
+        if expr is not None and expr.has(_n) and not expr.is_number:
+            has_var_coeff = True; break
+
+    # Check functions for non-standard forms
+    for t in terms:
+        expr = _parse_safe(t.function)
+        if expr is not None and expr.has(_n) and expr != _n:
             if _is_div(t.function) is None and _is_sub(t.function) is None:
-                has_var=True; break
-    if not has_var: return None
-    steps=[DemoStep(title="庞加莱-佩隆 — 启动",
-        description="检测到非常系数变元，$n\\to\\infty$ 极限分析。",
-        latex="\\text{分析各项系数的极限行为}")]
-    lim_terms=[]
+                has_var_func = True; break
+
+    if not has_var_coeff and not has_var_func:
+        return None
+
+    steps.append(DemoStep(title="庞加莱-佩隆 — 启动",
+        description="检测到非常系数或非标准变元，$n\\to\\infty$ 极限分析。",
+        latex="\\text{分析系数与变元的极限行为}"))
+
+    # Take limits of coefficients as n→∞
+    lim_ks = []
     for t in terms:
-        expr=_parse_safe(t.function)
+        cs = _sanitize(t.coefficient.strip())
+        expr = _parse_safe(cs)
+        if expr is not None and expr.has(_n):
+            try:
+                ratio = sp.limit(expr, _n, sp.oo)
+                if ratio.is_number: lim_ks.append(float(ratio))
+                else: lim_ks.append(float(expr.subs(_n, 1e6).evalf()))
+            except: lim_ks.append(_parse_coeff(cs))
+        else: lim_ks.append(_parse_coeff(cs))
+
+    # Take limits of f_i(n)/n as n→∞
+    lim_ratios = []
+    for t in terms:
+        expr = _parse_safe(t.function)
         if expr is None: continue
         try:
-            ratio=sp.limit(expr/_n,_n,sp.oo)
-            if ratio.is_number:
-                k=_parse_coeff(t.coefficient)
-                lim_terms.append((k,float(ratio)))
-                steps.append(DemoStep(title="庞加莱-佩隆 — 极限分析",
-                    description=f"$\\lim f_i(n)/n={_clean_exp(float(ratio))}$。",
-                    latex=f"\\lim\\frac{{{sp.latex(expr)}}}{{n}}={_clean_exp(float(ratio))}"))
-        except: continue
-    if not lim_terms: return None
-    all_div=all(0<r<1 for _,r in lim_terms)
-    all_sub=all(abs(r-1)<1e-6 for _,r in lim_terms)
-    if all_div:
-        b_lim=[1.0/r for _,r in lim_terms]; k_lim=[k for k,_ in lim_terms]
-        r=_akra_bazzi(b_lim,k_lim,g_sym)
-        if r: big_o,ab_steps,note=r; steps.extend(ab_steps); return big_o,steps,note
-    elif all_sub:
-        c_lim=[1 for _ in lim_terms]; k_lim=[k for k,_ in lim_terms]
-        r=_linear_recurrence(c_lim,k_lim,g_sym)
-        if r: big_o,ln_steps,note=r; steps.extend(ln_steps); return big_o,steps,note
+            ratio = sp.limit(expr / _n, _n, sp.oo)
+            if ratio.is_number: lim_ratios.append(float(ratio))
+            else: lim_ratios.append(None)
+        except: lim_ratios.append(None)
+
+    steps.append(DemoStep(title="庞加莱-佩隆 — 极限参数",
+        description=f"系数极限: {', '.join(_clean_exp(k) for k in lim_ks)}。",
+        latex=f"k_i\\to {', '.join(_clean_exp(k) for k in lim_ks)}"))
+
+    # Classify limiting behavior
+    if all(r is not None for r in lim_ratios):
+        all_div = all(0 < r < 1 for r in lim_ratios)
+        all_sub = all(abs(r - 1) < 1e-6 for r in lim_ratios)
+        if all_div:
+            b_lim = [1.0 / r for r in lim_ratios]
+            r = _akra_bazzi(b_lim, lim_ks, g_sym)
+            if r: big_o, ab_steps, note = r; steps.extend(ab_steps); return big_o, steps, note
+        elif all_sub:
+            c_lim = [1 for _ in lim_ratios]
+            r = _linear_recurrence(c_lim, lim_ks, g_sym)
+            if r: big_o, ln_steps, note = r; steps.extend(ln_steps); return big_o, steps, note
+
+    # If only coefficients were variable, retry with limiting coefficients
+    if has_var_coeff and not has_var_func and lim_ks:
+        strat, params, ks_orig = _classify(terms)
+        if strat == "division":
+            r = _akra_bazzi(params, lim_ks, g_sym)
+            if r:
+                big_o, ab_steps, note = r
+                steps.append(DemoStep(title="庞加莱-佩隆 — 极限 Akra-Bazzi",
+                    description="系数取 $n\\to\\infty$ 极限后求解。", latex=""))
+                steps.extend(ab_steps); return big_o, steps, note
+        elif strat == "subtraction":
+            r = _linear_recurrence(params, lim_ks, g_sym)
+            if r:
+                big_o, ln_steps, note = r
+                steps.extend(ln_steps); return big_o, steps, note
+
     return None
 
 
