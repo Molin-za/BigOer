@@ -102,6 +102,16 @@ def _classify(terms) -> Tuple[str, list, list]:
     return "mixed", params, ks
 
 
+def _has_variable_coeff(terms) -> bool:
+    """Check if any coefficient depends on n (variable coefficient)."""
+    for t in terms:
+        cs = _sanitize(t.coefficient.strip())
+        expr = _parse_safe(cs)
+        if expr is not None and expr.has(_n) and not expr.is_number:
+            return True
+    return False
+
+
 # ═══════════════ PREPROCESSING ═══════════════
 
 def _preprocess_terms(terms, g_sym: sp.Expr):

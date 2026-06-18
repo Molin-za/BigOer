@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from parse_clean import (_n, _sympy_expr, _parse_coeff, _classify,
-    _preprocess_terms, _build_formula)
+    _preprocess_terms, _build_formula, _has_variable_coeff)
 from solve_engine import (DemoStep, _master_theorem, _akra_bazzi,
     _linear_recurrence, _domain_substitution, _continuous_approx,
     _poincare_perron, _numerical_solve)
@@ -35,6 +35,11 @@ class SolveResponse(BaseModel):
 
 # ── Strategy Chain
 def _try_all_strategies(req: SolveRequest, g_sym, strategy: str, params: list, ks: list):
+    # Pre-check: variable coefficients → try Poincaré-Perron first
+    if _has_variable_coeff(req.terms):
+        r = _poincare_perron(req.terms, g_sym)
+        if r and r[0]: return (*r, "庞加莱-佩隆")
+
     all_pos = all(k > 1e-12 for k in ks) if ks else False
 
     if all_pos and strategy in ("division",) and len(params) == 1:

@@ -21,7 +21,7 @@ def _symbolic_log(a_num: float, b_num: float) -> str:
     b_i = int(b_num) if abs(b_num - int(b_num)) < 1e-9 else None
     if a_i is None or b_i is None or a_i <= 0 or b_i <= 1:
         return _clean_exp(math.log(a_num) / math.log(b_num))
-    for base in range(2, max(a_i, b_i) + 1):
+    for base in range(2, min(max(a_i, b_i) + 1, 50)):
         x = round(math.log(a_i) / math.log(base)); y = round(math.log(b_i) / math.log(base))
         if base**x == a_i and base**y == b_i:
             if x == y: return "1"
