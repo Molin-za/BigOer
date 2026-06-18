@@ -79,15 +79,16 @@ def _detect_log_k(g_sym, p_val: float) -> Tuple[int, int]:
         v0 = [abs(x) for x in v0 if np.isfinite(x)]
         if len(v0) < 2: return 0, 2
         v_slope = np.log(v0[-1]/max(v0[0],1e-12)) / np.log(1e8/1e4) if v0[0]>1e-12 else 0
-        if v_slope < -0.05: return 0, 1
-        if v_slope > 0.05:
+        if v_slope < -0.15: return 0, 1  # truly subdominant (polynomial gap)
+        if -0.15 <= v_slope < -0.02: return 0, 0  # ambiguous: let Akra-Bazzi handle it
+        if v_slope > 0.15:  # truly dominant
             for k in range(1, 5):
                 _fk = sp.lambdify(_n, g_sym / (_n**p_val * sp.log(_n)**k), 'numpy')
                 vk = [abs(_fk(ni)) for ni in [1e4, 1e6, 1e8]]
                 vk = [x for x in vk if np.isfinite(x)]
                 if len(vk) >= 2:
                     max_vk, min_vk = max(vk), min(vk)
-                    if max_vk > 1e-6 and min_vk / max_vk > 0.6: return k, 2
+                    if max_vk > 0.1 and min_vk / max_vk > 0.6: return k, 2
                     if vk[-1] < 0.001 * max(vk[0], 1e-9): return k-1, 2
             return 0, 3
         v0r = v0[-1] / max(v0[0], 1e-12) if v0[0] > 1e-12 else 99
@@ -98,7 +99,7 @@ def _detect_log_k(g_sym, p_val: float) -> Tuple[int, int]:
             vk = [x for x in vk if np.isfinite(x)]
             if len(vk) >= 2:
                 max_vk, min_vk = max(vk), min(vk)
-                if max_vk > 1e-6 and min_vk / max_vk > 0.6: return k, 2
+                if max_vk > 0.1 and min_vk / max_vk > 0.6: return k, 2
                 if vk[-1] < 0.001 * max(vk[0], 1e-9): return k-1, 2
         return 0, 2
     except: return 0, 0
@@ -164,6 +165,15 @@ def _big_o_from_expr(expr: sp.Expr) -> str:
                             elif np.isfinite(w2) and w2<0.01: log_k=k-1; break
                         except: continue
                 elif np.isfinite(u02) and 0.75 < u02/max(u01,1e-9) < 1.35: log_k=0
+                # If log_k=0 but the expression seems slightly subdominant, check log-log factor
+                if log_k == 0 and u02 < 0.9:
+                    try:
+                        _fll = sp.lambdify(_n, simp/(_n**pv * sp.log(sp.log(_n))), 'numpy')
+                        wll1, wll2 = abs(_fll(1e6)), abs(_fll(1e8))
+                        rll = wll2/max(wll1,1e-12) if wll1>1e-12 else 99
+                        if np.isfinite(wll2) and 0.75 < rll < 1.35 and abs(wll2) > 0.001:
+                            return f"O(n^{{{_clean_exp(pv)}}} \\log \\log n)"
+                    except: pass
                 return _fmt_theta(pv, log_k, prefix="O")
     except: pass
 

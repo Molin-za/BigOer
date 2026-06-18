@@ -29,7 +29,7 @@ def _master_theorem(a: float, b: float, g_sym: sp.Expr) -> Optional[Tuple[str, L
         description="$\\log_b a$ 判定阈值。", latex=f"\\log_b a={alpha_s}"))
     # Use _detect_log_k for robust case detection
     log_k, case = _detect_log_k(g_sym, alpha)
-    if case == 0: case = None  # unknown
+    if case == 0: return None  # ambiguous → fall through to Akra-Bazzi
     if case == 1:
         steps.append(DemoStep(title="主定理 — 情况一",
             description=f"$g(n)=O(n^{{{alpha_s}-\\varepsilon}})$。", latex=f"\\lim g/n^{{{alpha_s}}}=0"))
@@ -116,7 +116,12 @@ def _akra_bazzi(b_vals: List[float], k_vals: List[float], g_sym: sp.Expr) -> Opt
     if integral_expr is not None and p_is_exact:
         has_floats = any(isinstance(a, sp.Float) for a in integral_expr.atoms()) if hasattr(integral_expr,'atoms') else False
         if not has_floats:
-            final = _n**p_val*(1+sp.simplify(integral_expr)); big_o = _big_o_from_expr(final)
+            # Detect log(log(n)) pattern in integral → direct Θ(n^p log log n)
+            ill_str = str(integral_expr)
+            if 'log(log(' in ill_str or 'log(log(' in sp.latex(integral_expr):
+                big_o = f"\\Theta(n^{{{_clean_exp(p_val)}}} \\log \\log n)"
+            else:
+                final = _n**p_val*(1+sp.simplify(integral_expr)); big_o = _big_o_from_expr(final)
 
     if big_o is None:
         if case == 1: big_o = _fmt_theta(p_val)
