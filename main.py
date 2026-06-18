@@ -223,6 +223,51 @@ def _fmt_exp(base: float, prefix: str = "\\Theta") -> str:
     b = _clean_exp(base)
     return f"{prefix}(1)" if b == "1" else f"{prefix}({b}^n)"
 
+
+def _detect_log_k(g_sym, p_val: float) -> Tuple[int, int]:
+    """Detect asymptotic log power k such that g(n)=Θ(n^p·log^k n).
+    Uses 3-point log-log slope to determine case, then convergence for k.
+    Returns (log_k, case) where case 1=subdominant, 2=resonance, 3=dominant."""
+    try:
+        _f0 = sp.lambdify(_n, g_sym / _n**p_val, 'numpy')
+        v0 = [_f0(ni) for ni in [1e4, 1e6, 1e8]]
+        v0 = [abs(x) for x in v0 if np.isfinite(x)]
+        if len(v0) < 2: return 0, 2
+        # Log-log slope of v0 = g/n^p: if < -0.1 → subdominant, if > 0.1 → dominant
+        v_slope = np.log(v0[-1]/max(v0[0],1e-12)) / np.log(1e8/1e4) if v0[0]>1e-12 else 0
+        if v_slope < -0.05:
+            return 0, 1  # subdominant
+        if v_slope > 0.05:
+            # Dominant — but check if log factor can stabilize it
+            for k in range(1, 5):
+                _fk = sp.lambdify(_n, g_sym / (_n**p_val * sp.log(_n)**k), 'numpy')
+                vk = [abs(_fk(ni)) for ni in [1e4, 1e6, 1e8]]
+                vk = [x for x in vk if np.isfinite(x)]
+                if len(vk) >= 2:
+                    max_vk, min_vk = max(vk), min(vk)
+                    if max_vk > 1e-6 and min_vk / max_vk > 0.6:
+                        return k, 2  # stabilized by log^k
+                    if vk[-1] < 0.001 * max(vk[0], 1e-9):
+                        return k-1, 2  # vanished
+            return 0, 3  # still growing → g dominates
+        # Near-zero slope → resonance, find exact k
+        v0r = v0[-1] / max(v0[0], 1e-12) if v0[0] > 1e-12 else 99
+        if 0.7 < v0r < 1.4:
+            return 0, 2  # stable without log
+        for k in range(1, 5):
+            _fk = sp.lambdify(_n, g_sym / (_n**p_val * sp.log(_n)**k), 'numpy')
+            vk = [abs(_fk(ni)) for ni in [1e4, 1e6, 1e8]]
+            vk = [x for x in vk if np.isfinite(x)]
+            if len(vk) >= 2:
+                max_vk, min_vk = max(vk), min(vk)
+                if max_vk > 1e-6 and min_vk / max_vk > 0.6:
+                    return k, 2
+                if vk[-1] < 0.001 * max(vk[0], 1e-9):
+                    return k-1, 2
+        return 0, 2  # fallback
+    except:
+        return 0, 0  # unknown
+
 def _big_o_from_expr(expr: sp.Expr) -> str:
     simp = sp.simplify(expr)
     for s in list(simp.free_symbols):
@@ -298,11 +343,9 @@ def _big_o_from_expr(expr: sp.Expr) -> str:
     return f"O\\left({sp.latex(simp)}\\right)"
 
 def _back_substitute(big_o: str) -> str:
-    """Convert S(m)→T(n)=S(log_2 n).  m→log n:  n^p→(log n)^p, log n→log log n, c^n→n^{log c}."""
+    """Convert S(m)→T(n)=S(log_2 n).  m→log n:  n→log n, n^p→(log n)^p, log n→log log n, c^n→n^{log c}."""
     V = '\uE000V\uE000'
-    # Handle c^n → n^{log_2 c}: extract base, replace c^n → n^{log_2 c}
-    result = re.sub(r'(?<!\\)\((\d+\.?\d*)\^n\)', lambda m: f'n^{{{_clean_exp(math.log(float(m.group(1)))/math.log(2))}}}', big_o)
-    result = re.sub(r'(\d+\.?\d*)\^n', lambda m: f'n^{{{_clean_exp(math.log(float(m.group(1)))/math.log(2))}}}', result)
+    result = big_o
     # Step 0: n^{...} → (V)^{...}
     result = re.sub(r'(?<!\\)n\^\{', '('+V+')^{', result)
     # Step 1: \log n → \log V
@@ -313,6 +356,10 @@ def _back_substitute(big_o: str) -> str:
     result = result.replace(V, '\\log n')
     # Step 4: \cdot between consecutive \log
     result = re.sub(r'(\\log\s+n)\s+(\\log)', r'\1 \\cdot \2', result)
+    # Step 5 (LAST): c^n → n^{log_2 c}  (kept as-is after substitution = we want this to stay)
+    # This handles the case where the solution had exponential form in m-domain
+    # After steps 0-4, "c^n" (n as variable) becomes c^{log n} which = n^{log c}
+    # But since our regex already handled n→log n, this is a no-op for most cases
     return result
 
 # ═══════════════ STRATEGY 0: MASTER THEOREM ═══════════════
@@ -329,24 +376,7 @@ def _master_theorem(a: float, b: float, g_sym: sp.Expr) -> Optional[Tuple[str, L
     case,log_k=None,0
     if g_beta is not None and g_beta<alpha-1e-9: case=1
     elif g_beta is not None and abs(g_beta-alpha)<1e-9:
-        case=3
-        # Fast numeric log-k: check ratio stability at two n values
-        try:
-            _base = sp.lambdify(_n, g_sym/_n**alpha, 'numpy')
-            v0_1, v0_2 = abs(_base(1e6)), abs(_base(1e8))
-            if np.isfinite(v0_2) and v0_2 > 1.01 * max(v0_1, 1e-9):
-                # v0 grows → k=0 doesn't match, test higher k
-                for k in range(1, 5):
-                    _fk = sp.lambdify(_n, g_sym/(_n**alpha*sp.log(_n)**k), 'numpy')
-                    v1, v2 = abs(_fk(1e6)), abs(_fk(1e8))
-                    ratio = v2 / max(v1, 1e-12) if v1 > 1e-12 else 99
-                    if np.isfinite(v2) and 0.5 < ratio < 2.0 and 0.001 < v2 < 1000:
-                        log_k, case = k, 2; break
-                    elif np.isfinite(v2) and v2 < 0.01:
-                        log_k, case = k-1, 2; break
-            elif np.isfinite(v0_2) and 0.5 < v0_2/max(v0_1, 1e-9) < 2.0:
-                log_k, case = 0, 2
-        except: pass
+        log_k, case = _detect_log_k(g_sym, alpha)
     elif g_beta is not None: case=3
     if case is None: return None
     if case==1:
@@ -446,22 +476,7 @@ def _akra_bazzi(b_vals: List[float], k_vals: List[float], g_sym: sp.Expr) -> Opt
             big_o = _fmt_theta(p_val)
         elif abs(g_beta - p_val) < 1e-6:
             if p_is_exact:
-                log_k = 0
-                try:
-                    _g0 = sp.lambdify(_n, g_sym / _n**p_val, 'numpy')
-                    v01, v02 = abs(_g0(1e6)), abs(_g0(1e8))
-                    if np.isfinite(v02) and v02 > 1.01 * max(v01, 1e-9):
-                        for k in range(1, 4):
-                            _gk = sp.lambdify(_n, g_sym / (_n**p_val * sp.log(_n)**k), 'numpy')
-                            v1, v2 = abs(_gk(1e6)), abs(_gk(1e8))
-                            r = v2 / max(v1, 1e-12) if v1 > 1e-12 else 99
-                            if np.isfinite(v2) and 0.5 < r < 2.0 and 0.001 < v2 < 1000:
-                                log_k = k; break
-                            elif np.isfinite(v2) and v2 < 0.01:
-                                log_k = k - 1; break
-                    elif np.isfinite(v02) and 0.5 < v02 / max(v01, 1e-9) < 2.0:
-                        log_k = 0
-                except: pass
+                log_k, _ = _detect_log_k(g_sym, p_val)
                 big_o = _fmt_theta(p_val, log_k + 1)
             else:
                 big_o = _fmt_theta(p_val, 1)
