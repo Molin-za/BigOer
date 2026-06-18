@@ -116,10 +116,16 @@ def _akra_bazzi(b_vals: List[float], k_vals: List[float], g_sym: sp.Expr) -> Opt
     if integral_expr is not None and p_is_exact:
         has_floats = any(isinstance(a, sp.Float) for a in integral_expr.atoms()) if hasattr(integral_expr,'atoms') else False
         if not has_floats:
-            # Detect log(log(n)) pattern in integral → direct Θ(n^p log log n)
+            # Detect log(log(n)) or sqrt(log(n)) in integral → direct Θ(n^p · factor)
             ill_str = str(integral_expr)
-            if 'log(log(' in ill_str or 'log(log(' in sp.latex(integral_expr):
+            if 'log(log(' in ill_str:
                 big_o = f"\\Theta(n^{{{_clean_exp(p_val)}}} \\log \\log n)"
+            elif 'sqrt(log(' in ill_str or 'log(n)**(1/2)' in ill_str.replace(' ',''):
+                big_o = f"\\Theta(n^{{{_clean_exp(p_val)}}} \\sqrt{{\\log n}})"
+            elif 'log(' in ill_str and '**2' in ill_str.replace(' ',''):
+                big_o = f"\\Theta(n^{{{_clean_exp(p_val)}}} \\log^{{2}} n)"
+            elif 'log(' in ill_str and '**' not in ill_str:
+                big_o = f"\\Theta(n^{{{_clean_exp(p_val)}}} \\log n)"
             else:
                 final = _n**p_val*(1+sp.simplify(integral_expr)); big_o = _big_o_from_expr(final)
 
@@ -128,7 +134,8 @@ def _akra_bazzi(b_vals: List[float], k_vals: List[float], g_sym: sp.Expr) -> Opt
         elif case == 2:
             if p_is_exact: big_o = _fmt_theta(p_val, log_k + 1)
             else: big_o = _fmt_theta(p_val, 1)
-        else: big_o = _big_o_from_expr(g_sym)
+        elif case == 3: big_o = _big_o_from_expr(g_sym)
+        else: big_o = _fmt_theta(p_val)  # ambiguous (case 0): default to n^p
 
     if p_is_exact: note=None
     else:
