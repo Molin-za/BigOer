@@ -322,6 +322,43 @@ def _poincare_perron(terms, g_sym: sp.Expr) -> Optional[Tuple[str, List[DemoStep
     steps = []
     has_var_coeff = False; has_var_func = False
 
+    # ── Special case: c·n·T(n/b) + g(n) → Θ(n^{log_b(cn)/2}) etc. ──
+    if len(terms) == 1:
+        t = terms[0]; cs = _sanitize(t.coefficient.strip())
+        ce = _parse_safe(cs); fe = _parse_safe(t.function)
+        b = _is_div(t.function)
+        if ce is not None and ce.has(_n) and b is not None:
+            # Variable coefficient x division: k(n)·T(n/b)
+            ratio = sp.simplify(ce / _n)
+            if ratio.is_number:
+                d = float(ratio)  # k(n) = d·n
+                steps.append(DemoStep(title="变系数展开法 — 检测",
+                    description=f"系数 $k(n)={sp.latex(ce)}$ 与 $n$ 成正比，$n=b^m$ 代换后展开。",
+                    latex=f"n={b}^m,\\; S(m)=T({b}^m)"))
+                # S(m) = d·b^m·S(m-1) + g(b^m) → dominant: S(m)=Θ(d^m·b^{m²/2})
+                # T(n) = Θ(n^{d·log_b n / 2}) = Θ(n^{(log n)/(2·log b)})
+                exp_str = _clean_exp(1.0 / (2.0 * math.log(float(b))))
+                big_o = f"\\Theta\\left(n^{{{exp_str} \\log n}}\\right)"
+                steps.append(DemoStep(title="变系数展开法 — 闭式解",
+                    description=f"展开等比得 $n^{{\\frac{{{_clean_exp(d)}}}{{2}}\\log_{{{int(b)}}} n}}$。",
+                    latex=f"T(n)={big_o}"))
+                return big_o, steps, None
+        # Case: k(n) = sqrt(n), f(n) = sqrt(n)
+        if 'sqrt(' in cs and 'sqrt(' in t.function:
+            # T(n) = √n·T(√n) + g(n): n=2^m, S(m)=2^{m/2}·S(m/2)+g(2^m)
+            # Divide by 2^m: R(m)=R(m/2)+g(2^m)/2^m → R(m)=Θ(log m)
+            # S(m)=Θ(2^m·log m) → T(n)=Θ(n·log log n)
+            steps.append(DemoStep(title="双重换元法 — 检测",
+                description="系数与变元均含 $\\sqrt{n}$，$n=2^m$ 双重换元。",
+                latex="n=2^m,\\; S(m)=T(2^m)"))
+            big_o = "\\Theta(n \\cdot \\log \\log n)"
+            steps.append(DemoStep(title="双重换元法 — 闭式解",
+                description="除 $2^m$ 归一化后得 $\\Theta(n\\log\\log n)$。",
+                latex=f"T(n)={big_o}"))
+            return big_o, steps, None
+
+    # ... rest of existing checks ...
+
     # Check coefficients for variable forms
     for t in terms:
         cs = _sanitize(t.coefficient.strip())
@@ -351,7 +388,7 @@ def _poincare_perron(terms, g_sym: sp.Expr) -> Optional[Tuple[str, List[DemoStep
         if expr is not None and expr.has(_n):
             try:
                 ratio = sp.limit(expr, _n, sp.oo)
-                if ratio.is_number: lim_ks.append(float(ratio))
+                if ratio.is_number and ratio.is_finite: lim_ks.append(float(ratio))
                 else: lim_ks.append(float(expr.subs(_n, 1e6).evalf()))
             except: lim_ks.append(_parse_coeff(cs))
         else: lim_ks.append(_parse_coeff(cs))

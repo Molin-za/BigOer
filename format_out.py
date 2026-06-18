@@ -145,6 +145,10 @@ def _big_o_from_expr(expr: sp.Expr) -> str:
                 if 0.75 < r < 1.35 and abs(v2) > 0.001: return label
         except: pass
 
+    # Handle li(n) → n/log n
+    if 'li(' in str(simp) or 'li(' in sp.latex(simp):
+        return "O\\left(\\frac{n}{\\log n}\\right)"
+
     # Polynomial detection via log-log slope
     try:
         _fp = sp.lambdify(_n, simp, 'numpy')

@@ -55,7 +55,7 @@ def _parse_coeff(s: str) -> float:
     if not expr.has(_n): return float(expr.evalf())
     try:
         lim = sp.limit(expr, _n, sp.oo)
-        if lim.is_number: return float(lim.evalf())
+        if lim.is_number and lim.is_finite: return float(lim.evalf())
     except: pass
     try:
         f = sp.lambdify(_n, expr, 'numpy'); v = f(1000.0)
